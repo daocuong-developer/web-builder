@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useBuilder } from '../context/BuilderContext';
 import { X, ExternalLink } from 'lucide-react';
 
@@ -7,8 +7,10 @@ interface PreviewModalProps {
 }
 
 export function PreviewModal({ onClose }: PreviewModalProps) {
-  const { state, getCurrentPage } = useBuilder();
-  const currentPage = getCurrentPage();
+  const { state } = useBuilder();
+  const [currentPreviewPageId, setCurrentPreviewPageId] = useState(state.currentPageId);
+  
+  const currentPage = state.website.pages.find(p => p.id === currentPreviewPageId);
   
   if (!currentPage) return null;
 
@@ -19,8 +21,7 @@ export function PreviewModal({ onClose }: PreviewModalProps) {
   };
 
   const handlePageNavigation = (pageId: string) => {
-    // In preview, we just show which page would be navigated to
-    console.log('Navigate to page:', pageId);
+    setCurrentPreviewPageId(pageId);
   };
   
   return (
@@ -61,8 +62,8 @@ export function PreviewModal({ onClose }: PreviewModalProps) {
                           <button
                             key={nav.id}
                             onClick={() => handlePageNavigation(nav.pageId)}
-                            className={`text-sm font-medium transition-colors ${
-                              nav.pageId === currentPage.id
+                            className={`text-sm font-medium transition-colors cursor-pointer ${
+                              nav.pageId === currentPreviewPageId
                                 ? 'text-blue-600'
                                 : 'text-gray-600 hover:text-gray-900'
                             }`}
@@ -81,8 +82,8 @@ export function PreviewModal({ onClose }: PreviewModalProps) {
                 {currentPage.components.length === 0 ? (
                   <div className="text-center text-gray-500 py-12">
                     <div className="text-6xl mb-4">📄</div>
-                    <p className="text-lg">This page is empty</p>
-                    <p className="text-sm mt-2">Add some components to see them here</p>
+                    <p className="text-lg">Trang này đang trống</p>
+                    <p className="text-sm mt-2">Thêm một số component để xem chúng ở đây</p>
                   </div>
                 ) : (
                   <div className="space-y-6">
@@ -100,20 +101,17 @@ export function PreviewModal({ onClose }: PreviewModalProps) {
   );
 }
 
-interface PreviewComponentProps {
-  component: {
-    id: string;
-    type: string;
-    content?: string;
-    styles?: React.CSSProperties;
-    children?: PreviewComponentProps['component'][];
-  };
+interface PreviewComponentType {
+  id: string;
+  type: string;
+  content?: string;
+  styles?: React.CSSProperties & { position?: string };
+  children?: PreviewComponentType[];
 }
 
-function PreviewComponent({ component }: PreviewComponentProps) {
-  // Sanitize styles to ensure compatibility with React.CSSProperties
-  // Remove or cast any invalid CSS properties
-  const style: React.CSSProperties = { ...(component.styles as React.CSSProperties) };
+function PreviewComponent({ component }: { component: PreviewComponentType }) {
+  const [accordionOpen, setAccordionOpen] = useState(false);
+  const style = { ...component.styles };
   
   switch (component.type) {
     case 'heading':
@@ -149,12 +147,18 @@ function PreviewComponent({ component }: PreviewComponentProps) {
       const [accordionTitle, accordionContent] = (component.content ?? '').split('|');
       return (
         <div style={style}>
-          <div className="p-4 font-medium border-b">
-            {accordionTitle || 'Accordion Title'}
-          </div>
-          <div className="p-4">
-            {accordionContent || 'Accordion content goes here'}
-          </div>
+          <button
+            onClick={() => setAccordionOpen(!accordionOpen)}
+            className="w-full flex items-center justify-between p-4 text-left font-medium hover:bg-gray-50 transition-colors"
+          >
+            <span>{accordionTitle || 'Accordion Title'}</span>
+            <span>{accordionOpen ? '−' : '+'}</span>
+          </button>
+          {accordionOpen && (
+            <div className="p-4 border-t bg-white">
+              {accordionContent || 'Accordion content goes here'}
+            </div>
+          )}
         </div>
       );
     }
@@ -198,9 +202,14 @@ function PreviewComponent({ component }: PreviewComponentProps) {
     case 'grid':
       return (
         <div style={style}>
-          {component.children?.map((child: PreviewComponentProps['component']) => (
+          {component.children?.map((child: PreviewComponentType) => (
             <PreviewComponent key={child.id} component={child} />
           ))}
+          {(!component.children || component.children.length === 0) && (
+            <div className="text-gray-400 text-center py-8">
+              Container trống
+            </div>
+          )}
         </div>
       );
     
@@ -209,11 +218,11 @@ function PreviewComponent({ component }: PreviewComponentProps) {
         <div style={style}>
           <h3 className="text-lg font-semibold mb-4">{component.content}</h3>
           <form className="space-y-4">
-            <input type="text" placeholder="Name" className="w-full px-3 py-2 border rounded-md" />
+            <input type="text" placeholder="Tên" className="w-full px-3 py-2 border rounded-md" />
             <input type="email" placeholder="Email" className="w-full px-3 py-2 border rounded-md" />
-            <textarea placeholder="Message" rows={4} className="w-full px-3 py-2 border rounded-md" />
+            <textarea placeholder="Tin nhắn" rows={4} className="w-full px-3 py-2 border rounded-md" />
             <button type="submit" className="w-full bg-blue-600 text-white py-2 px-4 rounded-md">
-              Send Message
+              Gửi tin nhắn
             </button>
           </form>
         </div>

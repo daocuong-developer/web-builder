@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useReducer, useEffect } from 'react';
 import { Website, Page, Component, NavigationItem, ViewMode, HistoryState } from '../types/builder';
+import { arrayMove } from '@dnd-kit/sortable';
 
 interface BuilderState {
   website: Website;
@@ -84,7 +85,7 @@ const initialState: BuilderState = {
 function builderReducer(state: BuilderState, action: BuilderAction): BuilderState {
   const saveToHistory = (newState: BuilderState): BuilderState => {
     const historyState: HistoryState = {
-      website: newState.website,
+      website: JSON.parse(JSON.stringify(newState.website)), // Deep clone
       currentPageId: newState.currentPageId,
       selectedComponentId: newState.selectedComponentId
     };
@@ -124,28 +125,26 @@ function builderReducer(state: BuilderState, action: BuilderAction): BuilderStat
       return { ...state, isFirstTime: action.payload };
 
     case 'REORDER_COMPONENT': {
-      const reorderComponentsInList = (components: Component[]): Component[] => {
-        const componentIndex = components.findIndex(c => c.id === action.payload.componentId);
-        if (componentIndex === -1) return components;
-        
-        const [movedComponent] = components.splice(componentIndex, 1);
-        components.splice(action.payload.newIndex, 0, movedComponent);
-        
-        return [...components];
-      };
+      const { pageId, componentId, newIndex } = action.payload;
       
       const newState = {
         ...state,
         website: {
           ...state.website,
-          pages: state.website.pages.map(page =>
-            page.id === action.payload.pageId
-              ? {
-                  ...page,
-                  components: reorderComponentsInList([...page.components])
-                }
-              : page
-          )
+          pages: state.website.pages.map(page => {
+            if (page.id !== pageId) return page;
+            
+            const oldIndex = page.components.findIndex(c => c.id === componentId);
+            if (oldIndex === -1) return page;
+            
+            // Use arrayMove from @dnd-kit/sortable for proper reordering
+            const reorderedComponents = arrayMove(page.components, oldIndex, newIndex);
+            
+            return {
+              ...page,
+              components: reorderedComponents
+            };
+          })
         }
       };
       
@@ -174,7 +173,7 @@ function builderReducer(state: BuilderState, action: BuilderAction): BuilderStat
       const componentToCopy = findComponent(currentPage.components);
       if (!componentToCopy) return state;
       
-      return { ...state, clipboard: componentToCopy };
+      return { ...state, clipboard: JSON.parse(JSON.stringify(componentToCopy)) };
     }
 
     case 'PASTE_COMPONENT': {
@@ -309,10 +308,10 @@ function builderReducer(state: BuilderState, action: BuilderAction): BuilderStat
         const previousState = state.history[state.historyIndex - 1];
         return {
           ...state,
-          ...previousState,
-          historyIndex: state.historyIndex - 1,
-          history: state.history,
-          clipboard: state.clipboard
+          website: previousState.website,
+          currentPageId: previousState.currentPageId,
+          selectedComponentId: previousState.selectedComponentId,
+          historyIndex: state.historyIndex - 1
         };
       }
       return state;
@@ -323,10 +322,10 @@ function builderReducer(state: BuilderState, action: BuilderAction): BuilderStat
         const nextState = state.history[state.historyIndex + 1];
         return {
           ...state,
-          ...nextState,
-          historyIndex: state.historyIndex + 1,
-          history: state.history,
-          clipboard: state.clipboard
+          website: nextState.website,
+          currentPageId: nextState.currentPageId,
+          selectedComponentId: nextState.selectedComponentId,
+          historyIndex: state.historyIndex + 1
         };
       }
       return state;
@@ -386,9 +385,11 @@ function builderReducer(state: BuilderState, action: BuilderAction): BuilderStat
       const addComponentToPage = (components: Component[], parentId?: string, index?: number): Component[] => {
         if (!parentId) {
           const newComponents = [...components];
-          if (index !== undefined) {
+          if (index !== undefined && index >= 0) {
+            // Insert at specific index
             newComponents.splice(index, 0, action.payload.component);
           } else {
+            // Add at the end
             newComponents.push(action.payload.component);
           }
           return newComponents;
@@ -397,7 +398,7 @@ function builderReducer(state: BuilderState, action: BuilderAction): BuilderStat
         return components.map(component => {
           if (component.id === parentId && component.children) {
             const newChildren = [...component.children];
-            if (index !== undefined) {
+            if (index !== undefined && index >= 0) {
               newChildren.splice(index, 0, action.payload.component);
             } else {
               newChildren.push(action.payload.component);

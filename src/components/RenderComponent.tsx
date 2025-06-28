@@ -1,16 +1,15 @@
 import React, { useState } from 'react';
 import { useBuilder } from '../context/BuilderContext';
 import { Component } from '../types/builder';
-import { Trash2, Move, Copy, ChevronDown, ChevronUp, GripVertical } from 'lucide-react';
+import { Trash2, Copy, ChevronDown, ChevronUp, GripVertical } from 'lucide-react';
 
 interface RenderComponentProps {
   component: Component;
   pageId: string;
-  onDragStart?: (e: React.DragEvent) => void;
   isDragging?: boolean;
 }
 
-export function RenderComponent({ component, pageId, onDragStart, isDragging }: RenderComponentProps) {
+export function RenderComponent({ component, pageId, isDragging }: RenderComponentProps) {
   const { state, dispatch } = useBuilder();
   const isSelected = state.selectedComponentId === component.id;
   const [accordionOpen, setAccordionOpen] = useState(false);
@@ -36,7 +35,7 @@ export function RenderComponent({ component, pageId, onDragStart, isDragging }: 
     });
   };
 
-  const updateComponent = (updates: Partial<Component>) => {
+  const updateComponent = (updates: any) => {
     dispatch({
       type: 'UPDATE_COMPONENT',
       payload: {
@@ -63,7 +62,7 @@ export function RenderComponent({ component, pageId, onDragStart, isDragging }: 
       ...component.styles,
       position: 'relative' as const,
       objectFit: component.type === 'image' ? 'cover' as const : undefined,
-      opacity: isDragging ? 0.5 : 1
+      opacity: isDragging ? 0.7 : 1
     };
     
     switch (component.type) {
@@ -331,17 +330,18 @@ export function RenderComponent({ component, pageId, onDragStart, isDragging }: 
   
   return (
     <div
-      data-component-id={component.id}
-      className={`relative group ${isSelected ? 'ring-2 ring-blue-500' : ''}`}
+      className={`
+        relative group transition-all duration-200
+        ${isSelected ? 'ring-2 ring-blue-500 ring-offset-2' : ''}
+        ${isDragging ? 'opacity-70 transform rotate-1' : ''}
+      `}
       onClick={handleClick}
-      draggable={isSelected}
-      onDragStart={onDragStart}
     >
       {renderContent()}
       
-      {isSelected && (
-        <div className="absolute -top-10 right-0 flex items-center space-x-1 bg-blue-600 text-white px-2 py-1 rounded-md text-xs z-10">
-          <GripVertical className="w-3 h-3 cursor-move" />
+      {isSelected && !isDragging && (
+        <div className="absolute -top-10 right-0 flex items-center space-x-1 bg-blue-600 text-white px-2 py-1 rounded-md text-xs z-20">
+          <GripVertical className="w-3 h-3" />
           <span className="capitalize">{component.type}</span>
           <button
             onClick={handleDuplicate}

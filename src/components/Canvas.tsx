@@ -1,22 +1,25 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useBuilder } from '../context/BuilderContext';
 import { Component } from '../types/builder';
-import { RenderComponent } from './RenderComponent';
-import { DropZone } from './DropZone';
+import { SortableCanvas } from './SortableCanvas';
 
 export function Canvas() {
   const { state, dispatch, getCurrentPage } = useBuilder();
-  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
-  const [draggedComponentId, setDraggedComponentId] = useState<string | null>(null);
+  const [draggedComponentType, setDraggedComponentType] = useState<string | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   
   const currentPage = getCurrentPage();
+  if (!currentPage) return null;
 
   // Keyboard shortcuts
   useEffect(() => {
-    if (!currentPage) return;
-
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Prevent shortcuts when typing in inputs
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || 
+          (e.target as HTMLElement).contentEditable === 'true') {
+        return;
+      }
+
       if (e.ctrlKey || e.metaKey) {
         switch (e.key) {
           case 'z':
@@ -60,38 +63,17 @@ export function Canvas() {
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [state.selectedComponentId, currentPage?.id, dispatch]);
+  }, [state.selectedComponentId, currentPage.id, dispatch]);
 
-  if (!currentPage) return null;
-
-  // Handle component reordering
-  const handleComponentDragStart = (e: React.DragEvent, componentId: string) => {
-    setDraggedComponentId(componentId);
-    e.dataTransfer.setData('component-reorder', componentId);
-  };
-
+  // Handle drop from component library
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
-    setDragOverIndex(null);
-    
     const componentType = e.dataTransfer.getData('component-type');
-    const reorderComponentId = e.dataTransfer.getData('component-reorder');
     
-    if (reorderComponentId) {
-      // Reorder existing component
-      dispatch({
-        type: 'REORDER_COMPONENT',
-        payload: {
-          pageId: currentPage.id,
-          componentId: reorderComponentId,
-          newIndex: dragOverIndex ?? currentPage.components.length
-        }
-      });
-    } else if (componentType) {
-      // Add new component
+    if (componentType) {
       const newComponent: Component = {
-        id: `${componentType}-${Date.now()}`,
-        type: componentType as Component['type'],
+        id: `${componentType}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        type: componentType as any,
         content: getDefaultContent(componentType),
         styles: getDefaultStyles(componentType),
         children: ['container', 'section', 'grid', 'accordion'].includes(componentType) ? [] : undefined
@@ -101,43 +83,27 @@ export function Canvas() {
         type: 'ADD_COMPONENT',
         payload: {
           pageId: currentPage.id,
-          component: newComponent,
-          index: dragOverIndex ?? undefined
+          component: newComponent
         }
       });
     }
     
-    setDraggedComponentId(null);
+    setDraggedComponentType(null);
   };
   
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
     
-    if (!canvasRef.current) return;
-    
-    const rect = canvasRef.current.getBoundingClientRect();
-    const y = e.clientY - rect.top;
-    const componentElements = canvasRef.current.querySelectorAll('[data-component-id]');
-    
-    let insertIndex = currentPage.components.length;
-    
-    for (let i = 0; i < componentElements.length; i++) {
-      const element = componentElements[i] as HTMLElement;
-      const elementRect = element.getBoundingClientRect();
-      const elementY = elementRect.top - rect.top + elementRect.height / 2;
-      
-      if (y < elementY) {
-        insertIndex = i;
-        break;
-      }
+    const componentType = e.dataTransfer.getData('component-type');
+    if (componentType) {
+      setDraggedComponentType(componentType);
     }
-    
-    setDragOverIndex(insertIndex);
   };
   
   const handleDragLeave = (e: React.DragEvent) => {
     if (!canvasRef.current?.contains(e.relatedTarget as Node)) {
-      setDragOverIndex(null);
+      setDraggedComponentType(null);
     }
   };
   
@@ -158,13 +124,15 @@ export function Canvas() {
         <div className={`bg-white shadow-lg transition-all duration-300 ${getViewportClass()}`}>
           <div
             ref={canvasRef}
-            className="min-h-screen relative"
+            className={`min-h-screen relative transition-colors ${
+              draggedComponentType ? 'bg-blue-50' : ''
+            }`}
             onDrop={handleDrop}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onClick={() => dispatch({ type: 'SET_SELECTED_COMPONENT', payload: null })}
           >
-            {currentPage.components.length === 0 && (
+            {currentPage.components.length === 0 && !draggedComponentType && (
               <div className="absolute inset-0 flex items-center justify-center text-gray-400">
                 <div className="text-center">
                   <div className="text-6xl mb-4">🎨</div>
@@ -181,22 +149,23 @@ export function Canvas() {
               </div>
             )}
             
-            {currentPage.components.map((component, index) => (
-              <React.Fragment key={component.id}>
-                {dragOverIndex === index && (
-                  <DropZone />
-                )}
-                <RenderComponent
-                  component={component}
-                  pageId={currentPage.id}
-                  onDragStart={(e) => handleComponentDragStart(e, component.id)}
-                  isDragging={draggedComponentId === component.id}
-                />
-              </React.Fragment>
-            ))}
+            {draggedComponentType && currentPage.components.length === 0 && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-full h-20 bg-gradient-to-r from-blue-200 to-purple-200 border-2 border-dashed border-blue-400 rounded-lg opacity-80 flex items-center justify-center">
+                  <div className="text-sm text-blue-700 font-semibold px-3 py-1 bg-white rounded-full shadow-sm">
+                    ⬇ Thả component ở đây ⬇
+                  </div>
+                </div>
+              </div>
+            )}
             
-            {dragOverIndex === currentPage.components.length && (
-              <DropZone />
+            {/* Sortable Canvas for existing components */}
+            {currentPage.components.length > 0 && (
+              <SortableCanvas 
+                components={currentPage.components}
+                pageId={currentPage.id}
+                isDragOverCanvas={!!draggedComponentType}
+              />
             )}
           </div>
         </div>
@@ -234,19 +203,19 @@ function getDefaultContent(type: string): string {
   }
 }
 
-function getDefaultStyles(type: string): { [key: string]: string } {
-  const baseStyles: { [key: string]: string } = {
+function getDefaultStyles(type: string): any {
+  const baseStyles = {
     padding: '16px',
     margin: '8px 0'
   };
-
+  
   switch (type) {
     case 'heading':
       return {
         ...baseStyles,
         fontSize: '32px',
         fontWeight: 'bold',
-        textAlign: 'center',
+        textAlign: 'center' as const,
         color: '#1F2937'
       };
     case 'text':
@@ -254,7 +223,7 @@ function getDefaultStyles(type: string): { [key: string]: string } {
         ...baseStyles,
         fontSize: '16px',
         color: '#374151',
-        textAlign: 'left'
+        textAlign: 'left' as const
       };
     case 'button':
       return {
@@ -262,7 +231,7 @@ function getDefaultStyles(type: string): { [key: string]: string } {
         backgroundColor: '#3B82F6',
         color: '#FFFFFF',
         borderRadius: '8px',
-        textAlign: 'center',
+        textAlign: 'center' as const,
         display: 'inline-block',
         padding: '12px 24px',
         fontSize: '16px',
@@ -276,7 +245,7 @@ function getDefaultStyles(type: string): { [key: string]: string } {
         width: '100%',
         height: '300px',
         borderRadius: '8px',
-        objectFit: 'cover'
+        objectFit: 'cover' as const
       };
     case 'video':
       return {
@@ -292,7 +261,7 @@ function getDefaultStyles(type: string): { [key: string]: string } {
         borderRadius: '8px',
         padding: '24px',
         display: 'flex',
-        flexDirection: 'column',
+        flexDirection: 'column' as const,
         gap: '16px'
       };
     case 'section':
@@ -300,7 +269,7 @@ function getDefaultStyles(type: string): { [key: string]: string } {
         ...baseStyles,
         padding: '48px 24px',
         display: 'flex',
-        flexDirection: 'column',
+        flexDirection: 'column' as const,
         gap: '24px'
       };
     case 'grid':
@@ -352,8 +321,8 @@ function getDefaultStyles(type: string): { [key: string]: string } {
         ...baseStyles,
         display: 'flex',
         gap: '16px',
-        justifyContent: 'center',
-        alignItems: 'center'
+        justifyContent: 'center' as const,
+        alignItems: 'center' as const
       };
     default:
       return baseStyles;
